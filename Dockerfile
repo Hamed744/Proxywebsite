@@ -11,9 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4. Copy the application code
 COPY app.py .
 
-# 5. Expose the port
-EXPOSE 7860
+# 5. Expose the port (Render uses this)
+# Gunicorn will bind to this port
+EXPOSE 10000
 
 # 6. Set the command to run the application
-# We can use more workers now because the app is very lightweight.
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "4", "app:app"]
+# Standard Gunicorn command for a Flask app
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "4", "app:app"]
