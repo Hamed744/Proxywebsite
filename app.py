@@ -2,11 +2,10 @@ import cloudscraper
 from flask import Flask, Response, request
 import random
 
-# --- تنظیمات ---
+# --- Settings ---
 TARGET_BASE_URL = "https://tryveo3.ai"
 # -----------------
 
-# لیست پراکسی‌های شما از webshare.io
 PROXY_LIST = [
     "198.23.239.134:6540:jyzchdnp:egioy7zov8td",
     "207.244.217.165:6712:jyzchdnp:egioy7zov8td",
@@ -26,19 +25,11 @@ scraper = cloudscraper.create_scraper()
 def get_random_proxy():
     """یک پراکسی تصادفی از لیست انتخاب و فرمت می‌کند."""
     try:
-        # یک پراکسی از لیست به صورت تصادفی انتخاب کن
         proxy_string = random.choice(PROXY_LIST)
         ip, port, user, password = proxy_string.split(':')
-        
-        # فرمت مورد نیاز برای کتابخانه requests
         proxy_url = f"http://{user}:{password}@{ip}:{port}"
-        
         print(f"INFO: Using proxy: {ip}:{port}")
-        
-        return {
-           "http": proxy_url,
-           "https": proxy_url,
-        }
+        return {"http": proxy_url, "https": proxy_url}
     except Exception as e:
         print(f"ERROR: Could not parse proxy string. Error: {e}")
         return None
@@ -46,7 +37,9 @@ def get_random_proxy():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def proxy(path):
-    """از یک پراکسی تصادفی برای ارسال درخواست استفاده می‌کند."""
+    """
+    درخواست را با پراکسی ارسال کرده و نوع محتوا (HTML, CSS, JS, etc.) را به درستی برمی‌گرداند.
+    """
     
     target_url = f"{TARGET_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
     if request.query_string:
@@ -58,16 +51,22 @@ def proxy(path):
     try:
         proxies_to_use = get_random_proxy()
         if not proxies_to_use:
-            return "Error: Invalid proxy configuration in the application.", 500
+            return "Error: Invalid proxy configuration.", 500
 
         # ارسال درخواست با استفاده از پراکسی
         response = scraper.get(target_url, timeout=45, proxies=proxies_to_use)
         response.raise_for_status()
         
-        print(f"SUCCESS: Got {response.status_code} from target via proxy.")
+        # --- بخش کلیدی و جدید ---
+        # نوع محتوای اصلی را از هدرها استخراج می‌کنیم
+        content_type = response.headers.get('Content-Type', 'text/plain')
         
-        content_type = response.headers.get('Content-Type', 'text/html')
+        print(f"SUCCESS: Got {response.status_code} from target with Content-Type: {content_type}")
+        
+        # از response.content استفاده می‌کنیم که محتوای خام (bytes) است و برای همه نوع فایل (تصویر، متن و...) مناسب است
+        # و نوع محتوای اصلی را به مرورگر اعلام می‌کنیم
         return Response(response.content, status=response.status_code, mimetype=content_type)
+        # ------------------------
 
     except Exception as e:
         print(f"FATAL: An error occurred: {e}")
