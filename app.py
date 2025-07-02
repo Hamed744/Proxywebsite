@@ -1,21 +1,21 @@
 import cloudscraper
-from quart import Quart, Response, request
+from flask import Flask, Response, request
 
 # --- Settings ---
 TARGET_BASE_URL = "https://tryveo3.ai"
 # -----------------
 
-app = Quart(__name__)
+app = Flask(__name__)
 
 # Create a single, reusable scraper instance
 scraper = cloudscraper.create_scraper()
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-async def proxy(path):
+def proxy(path):
     """
-    Handles proxying requests using the lightweight cloudscraper library.
-    This is much more efficient and stable than a full browser.
+    Handles proxying requests using the lightweight cloudscraper library
+    with the simple and robust Flask framework.
     """
     
     target_url = f"{TARGET_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
@@ -26,17 +26,13 @@ async def proxy(path):
     print(f"INFO: Proxying with cloudscraper to: {target_url}")
 
     try:
-        # Use a standard synchronous get request inside a thread managed by Quart
-        # This is the recommended way for I/O-bound tasks in Quart.
-        response = await app.sync_to_async(scraper.get)(target_url)
+        response = scraper.get(target_url, timeout=30) # 30 second timeout
         
         # Check if the request was successful
         response.raise_for_status()
         
         print(f"SUCCESS: Got {response.status_code} from target.")
 
-        # Extract headers. We need to be careful here.
-        # We only forward the content-type.
         content_type = response.headers.get('Content-Type', 'text/html')
         
         return Response(response.text, status=response.status_code, mimetype=content_type)
