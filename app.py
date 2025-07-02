@@ -1,9 +1,10 @@
 import cloudscraper
 from flask import Flask, Response, request
 import random
+from urllib.parse import urlparse
 
 # --- Settings ---
-TARGET_BASE_URL = "https://tryveo3.ai"
+TARGET_BASE_URL = "https://tryveo3.ai/features/v3"
 # -----------------
 
 PROXY_LIST = [
@@ -23,51 +24,68 @@ app = Flask(__name__)
 scraper = cloudscraper.create_scraper()
 
 def get_random_proxy():
-    """یک پراکسی تصادفی از لیست انتخاب و فرمت می‌کند."""
     try:
         proxy_string = random.choice(PROXY_LIST)
         ip, port, user, password = proxy_string.split(':')
         proxy_url = f"http://{user}:{password}@{ip}:{port}"
         print(f"INFO: Using proxy: {ip}:{port}")
         return {"http": proxy_url, "https": proxy_url}
-    except Exception as e:
-        print(f"ERROR: Could not parse proxy string. Error: {e}")
+    except Exception:
         return None
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+@app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'HEAD', 'PUT', 'DELETE'])
+@app.route('/<path:path>', methods=['GET', 'POST', 'HEAD', 'PUT', 'DELETE'])
 def proxy(path):
-    """
-    درخواست را با پراکسی ارسال کرده و نوع محتوا (HTML, CSS, JS, etc.) را به درستی برمی‌گرداند.
-    """
-    
     target_url = f"{TARGET_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
     if request.query_string:
         target_url += "?" + request.query_string.decode('utf-8')
 
-    print(f"--- New Request ---")
-    print(f"INFO: Proxying to: {target_url}")
+    print(f"--- Request for: {path} ---")
 
     try:
         proxies_to_use = get_random_proxy()
         if not proxies_to_use:
             return "Error: Invalid proxy configuration.", 500
 
-        # ارسال درخواست با استفاده از پراکسی
-        response = scraper.get(target_url, timeout=45, proxies=proxies_to_use)
-        response.raise_for_status()
+        # Pass original headers from the browser (like User-Agent)
+        headers = {key: value for (key, value) in request.headers if key.lower() != 'host'}
+        headers['Host'] = urlparse(TARGET_BASE_URL).netloc
         
-        # --- بخش کلیدی و جدید ---
-        # نوع محتوای اصلی را از هدرها استخراج می‌کنیم
-        content_type = response.headers.get('Content-Type', 'text/plain')
+        response = scraper.request(
+            method=request.method,
+            url=target_url,
+            proxies=proxies_to_use,
+            headers=headers,
+            data=request.get_data(),
+            allow_redirects=False,
+            timeout=45
+        )
+
+        content_type = response.headers.get('Content-Type', '')
         
-        print(f"SUCCESS: Got {response.status_code} from target with Content-Type: {content_type}")
+        # --- CRITICAL CHANGE: SMART REWRITING ---
+        if 'text/html' in content_type:
+            print(f"INFO: Rewriting HTML content from {path}")
+            # Replace the target domain with our proxy's domain
+            content = response.text.replace(TARGET_BASE_URL, request.host_url.rstrip('/'))
+            # Also replace relative paths that start with a slash
+            content = content.replace('href="/', f'href="{request.host_url.rstrip("/")}/')
+            content = content.replace('src="/', f'src="{request.host_url.rstrip("/")}/')
+            
+            # Use the rewritten content
+            final_content = content.encode('utf-8')
+        else:
+            # For all other content types (CSS, JS, images), pass them through directly
+            print(f"INFO: Passing through content type: {content_type}")
+            final_content = response.content
+        # ----------------------------------------
         
-        # از response.content استفاده می‌کنیم که محتوای خام (bytes) است و برای همه نوع فایل (تصویر، متن و...) مناسب است
-        # و نوع محتوای اصلی را به مرورگر اعلام می‌کنیم
-        return Response(response.content, status=response.status_code, mimetype=content_type)
-        # ------------------------
+        # Exclude headers that can cause issues
+        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+        final_headers = [(name, value) for (name, value) in response.raw.headers.items() if name.lower() not in excluded_headers]
+
+        return Response(final_content, response.status_code, final_headers)
 
     except Exception as e:
-        print(f"FATAL: An error occurred: {e}")
-        return f"An error occurred while trying to proxy the request: {e}", 500
+        print(f"FATAL: An error occurred for path '{path}': {e}")
+        return f"An error occurred: {e}", 500
