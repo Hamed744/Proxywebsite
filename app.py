@@ -1,41 +1,90 @@
 import cloudscraper
-from flask import Flask, Response, request
+from flask import Flask, Response, request, render_template_string
+import random
+from urllib.parse import urlparse
 
 # --- Settings ---
-TARGET_BASE_URL = "https://hamed744-veu3.static.hf.space"
+TARGET_BASE_URL = "https://tryveo3.ai"
 # -----------------
 
-app = Flask(__name__)
+PROXY_LIST = [
+    "198.23.239.134:6540:jyzchdnp:egioy7zov8td", "207.244.217.165:6712:jyzchdnp:egioy7zov8td",
+    "107.172.163.27:6543:jyzchdnp:egioy7zov8td", "23.94.138.75:6349:jyzchdnp:egioy7zov8td",
+    "216.10.27.159:6837:jyzchdnp:egioy7zov8td", "136.0.207.84:6661:jyzchdnp:egioy7zov8td",
+    "64.64.118.149:6732:jyzchdnp:egioy7zov8td", "142.147.128.93:6593:jyzchdnp:egioy7zov8td",
+    "104.239.105.125:6655:jyzchdnp:egioy7zov8td", "173.0.9.70:5653:jyzchdnp:egioy7zov8td"
+]
 
-# Create a single, reusable scraper instance
+app = Flask(__name__)
 scraper = cloudscraper.create_scraper()
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def proxy(path):
+# این کد HTML صفحه اصلی ماست که فقط یک آی‌فریم دارد
+IFRAME_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Proxy Viewer</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+        iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+    </style>
+</head>
+<body>
+    <!-- آدرس آی‌فریم به یک مسیر دیگر در همین سرور اشاره می‌کند -->
+    <iframe src="/proxy_content/features/v3"></iframe>
+</body>
+</html>
+"""
+
+def get_random_proxy():
+    try:
+        proxy_string = random.choice(PROXY_LIST)
+        ip, port, user, password = proxy_string.split(':')
+        proxy_url = f"http://{user}:{password}@{ip}:{port}"
+        print(f"INFO: Using proxy: {ip}:{port}")
+        return {"http": proxy_url, "https": proxy_url}
+    except Exception:
+        return None
+
+@app.route('/')
+def home():
+    """این تابع، صفحه اصلی با آی‌فریم را به کاربر نشان می‌دهد."""
+    return render_template_string(IFRAME_TEMPLATE)
+
+@app.route('/proxy_content/', defaults={'path': ''})
+@app.route('/proxy_content/<path:path>')
+def proxy_content(path):
     """
-    Handles proxying requests using the lightweight cloudscraper library
-    with the simple and robust Flask framework.
+    این تابع محتوای واقعی را برای آی‌فریم فراهم می‌کند و هدرهای امنیتی را حذف می‌کند.
     """
-    
     target_url = f"{TARGET_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
     if request.query_string:
         target_url += "?" + request.query_string.decode('utf-8')
 
-    print(f"--- New Request ---")
-    print(f"INFO: Proxying with cloudscraper to: {target_url}")
+    print(f"--- Iframe Request ---")
+    print(f"INFO: Proxying to: {target_url}")
 
     try:
-        response = scraper.get(target_url, timeout=30) # 30 second timeout
+        proxies_to_use = get_random_proxy()
+        if not proxies_to_use:
+            return "Error: Invalid proxy configuration.", 500
+
+        # ارسال درخواست با هدرهای مناسب
+        forward_headers = {key: value for key, value in request.headers.items() if key.lower() not in ['host', 'referer']}
+        forward_headers['Host'] = urlparse(TARGET_BASE_URL).netloc
         
-        # Check if the request was successful
+        response = scraper.get(target_url, timeout=45, proxies=proxies_to_use, headers=forward_headers)
         response.raise_for_status()
         
-        print(f"SUCCESS: Got {response.status_code} from target.")
-
-        content_type = response.headers.get('Content-Type', 'text/html')
+        # --- بخش حیاتی و کلیدی ---
+        # هدرهای امنیتی که مانع نمایش در آی‌فریم می‌شوند را حذف می‌کنیم
+        headers_to_remove = ['content-encoding', 'transfer-encoding', 'content-security-policy', 'x-frame-options']
+        final_headers = {key: value for key, value in response.headers.items() if key.lower() not in headers_to_remove}
+        # ------------------------
         
-        return Response(response.text, status=response.status_code, mimetype=content_type)
+        print(f"SUCCESS: Got {response.status_code} from target. Serving to iframe...")
+        
+        return Response(response.content, status=response.status_code, headers=final_headers)
 
     except Exception as e:
         print(f"FATAL: An error occurred: {e}")
