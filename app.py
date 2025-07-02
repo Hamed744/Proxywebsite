@@ -8,9 +8,7 @@ TARGET_BASE_URL = "https://tryveo3.ai"
 
 app = Quart(__name__)
 
-# A global variable to hold the single browser instance
 browser_instance = None
-# A lock to ensure only one request is processed at a time, preventing race conditions.
 request_lock = asyncio.Lock()
 
 @app.before_serving
@@ -40,7 +38,7 @@ async def shutdown():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 async def proxy(path):
-    """Handles proxying requests serially to prevent race conditions."""
+    """Handles proxying requests with resource optimization."""
     if browser_instance is None:
         return "Error: Browser is not ready, please try again in a moment.", 503
 
@@ -51,24 +49,37 @@ async def proxy(path):
     print(f"--- New Request ---")
     print(f"INFO: Waiting for lock to proxy: {target_url}")
 
-    # This lock ensures that only one request can be in this block at a time.
     async with request_lock:
         print(f"INFO: Lock acquired. Processing: {target_url}")
         context = None
+        response = Response("An internal error occurred in the proxy.", status=500, mimetype="text/plain")
+        
         try:
             context = await browser_instance.new_context(
                  user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
             )
             page = await context.new_page()
+
+            # --- CRITICAL OPTIMIZATION: Block unnecessary resources ---
+            async def handle_route(route):
+                resource_type = route.request.resource_type
+                if resource_type in ["image", "stylesheet", "font", "media"]:
+                    # print(f"  -> Blocking resource: {resource_type}")
+                    await route.abort()
+                else:
+                    await route.continue_()
             
-            print("INFO: Navigating...")
-            await page.goto(target_url, timeout=120000, wait_until="domcontentloaded")
+            await page.route("**/*", handle_route)
+            # -----------------------------------------------------------
+            
+            print("INFO: Navigating with resource blocking enabled...")
+            # We use 'networkidle' because with fewer resources, it's more reliable now.
+            await page.goto(target_url, timeout=120000, wait_until="networkidle")
             print("INFO: Page navigation complete. Getting content...")
             
             content = await page.content()
             print("SUCCESS: Content retrieved.")
             
-            # The response is prepared here but returned after the finally block.
             response = Response(content, status=200, mimetype="text/html")
             
         except PlaywrightTimeoutError:
