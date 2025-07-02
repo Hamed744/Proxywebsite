@@ -1,3 +1,4 @@
-flask[async]
+quart
 playwright
 gunicorn
+uvicorn
