@@ -29,5 +29,6 @@ COPY app.py .
 # 8. Expose the port the app runs on
 EXPOSE 7860
 
-# 9. Set the command to run the application with 1 worker
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--worker-class", "gevent", "app:app"]
+# 9. Set the command to run the application
+# FINAL CHANGE: Use the uvicorn worker for native async support
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "app:app"]
