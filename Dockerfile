@@ -30,5 +30,5 @@ COPY app.py .
 EXPOSE 7860
 
 # 9. Set the command to run the application
-# FINAL CHANGE: Use the uvicorn worker for native async support
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--worker-class", "uvicorn.workers.UvicornWorker", "app:app"]
+# FINAL FIX: Use the 'gthread' worker, which is compatible with Flask's async model.
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", "--worker-class", "gthread", "app:app"]
