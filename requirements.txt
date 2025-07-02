@@ -1,4 +1,4 @@
 flask[async]
 playwright
 gunicorn
-gevent
+uvicorn
