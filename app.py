@@ -3,7 +3,7 @@ from quart import Quart, Response, request
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 # --- Settings ---
-TARGET_BASE_URL = "https://tryveo3.ai"
+TARGET_BASE_URL = "https://tryveo3.ai/features/v3"
 # -----------------
 
 app = Quart(__name__)
