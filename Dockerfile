@@ -1,20 +1,24 @@
-# 1. Base Image: A simple and standard Python image
-FROM python:3.11-slim-bookworm
+FROM python:3.9-slim
 
-# 2. Set Working Directory
-WORKDIR /app
+# نصب ابزارهای ضروری و فایرفاکس
+# ما git را هم اضافه کردیم برای دانلود NoVNC
+RUN apt-get update && apt-get install -y \
+    firefox-esr \
+    xvfb \
+    x11vnc \
+    git \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
 
-# 3. Copy requirements.txt and install the lightweight dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# دانلود و نصب دستی NoVNC (چون در مخازن ساده نیست)
+RUN git clone https://github.com/novnc/noVNC.git /opt/novnc \
+    && git clone https://github.com/novnc/websockify /opt/novnc/utils/websockify \
+    && ln -s /opt/novnc/vnc.html /opt/novnc/index.html
 
-# 4. Copy the application code
 COPY app.py .
 
-# 5. Expose the port (Render uses this)
-# Gunicorn will bind to this port
+# پورت استاندارد رندر
+ENV PORT=10000
 EXPOSE 10000
 
-# 6. Set the command to run the application
-# Standard Gunicorn command for a Flask app
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "4", "app:app"]
+CMD ["python", "app.py"]
