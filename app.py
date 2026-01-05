@@ -1,55 +1,71 @@
 import os
 import subprocess
 import time
+import sys
 
-# تنظیمات نمایش
+# تنظیمات بهینه شده برای رندر
 DISPLAY = ":0"
-# رزولوشن را کمی کمتر کردیم تا روی رم 512 رندر روان‌تر اجرا شود
-RESOLUTION = "1024x768" 
+# رزولوشن کمتر برای مصرف رم کمتر
+RESOLUTION = "800x600" 
 TARGET_URL = "https://hadadxyz-ai.hf.space"
-RENDER_PORT = "10000"
+# دریافت پورت از رندر (یا پیش‌فرض 10000)
+PORT = os.environ.get("PORT", "10000")
+
+def log(msg):
+    print(f"[SYSTEM] {msg}", flush=True)
 
 def start_virtual_display():
-    print("Initializing Graphics Core...")
-    # اجرای صفحه نمایش مجازی
+    log("Starting Xvfb (Display)...")
     subprocess.Popen(["Xvfb", DISPLAY, "-screen", "0", f"{RESOLUTION}x16"])
-    time.sleep(3) # صبر برای لود شدن
+    time.sleep(3)
 
 def start_vnc_server():
-    print("Starting VNC Protocol...")
-    # اجرای سرور تصویر
+    log("Starting x11vnc...")
+    # اجرای VNC
     subprocess.Popen(["x11vnc", "-display", DISPLAY, "-nopw", "-forever", "-quiet", "-bg"])
 
 def start_firefox():
-    print("Launching Browser Engine...")
-    # اجرای فایرفاکس در حالت کیوسک (تمام صفحه و سبک)
+    log("Starting Firefox Kiosk...")
+    # اجرای فایرفاکس
     subprocess.Popen([
         "firefox-esr",
         "--display=" + DISPLAY,
+        "--width=800",
+        "--height=600",
         "--kiosk",
-        "--no-remote",
         TARGET_URL
     ])
 
 def start_novnc_proxy():
-    print(f"Starting Web Interface on port {RENDER_PORT}...")
-    # تبدیل VNC به وب‌سایت قابل نمایش در مرورگر
+    log(f"Starting NoVNC Proxy on port {PORT}...")
+    
+    # دستور حیاتی: listen روی 0.0.0.0
     cmd = [
         "/opt/novnc/utils/novnc_proxy",
         "--vnc", "localhost:5900",
-        "--listen", RENDER_PORT
+        "--listen", f"0.0.0.0:{PORT}"
     ]
-    subprocess.Popen(cmd)
+    
+    process = subprocess.Popen(cmd)
+    return process
 
 if __name__ == "__main__":
-    # ترتیب اجرا بسیار مهم است
-    start_virtual_display()
-    start_vnc_server()
-    start_firefox()
-    start_novnc_proxy()
-    
-    print("System Online. Access via browser.")
-    
-    # حلقه بی‌نهایت برای باز نگه داشتن برنامه
-    while True:
-        time.sleep(60)
+    try:
+        start_virtual_display()
+        start_vnc_server()
+        start_firefox()
+        
+        # اجرای پروکسی و ذخیره پروسه
+        proxy_process = start_novnc_proxy()
+        
+        log(f"Service works! Open: https://YOUR-APP.onrender.com/vnc.html?autoconnect=true")
+        
+        # نگه داشتن برنامه و چک کردن خطا
+        while True:
+            if proxy_process.poll() is not None:
+                log("FATAL: NoVNC Proxy crashed!")
+                sys.exit(1)
+            time.sleep(10)
+            
+    except Exception as e:
+        log(f"Error: {e}")
