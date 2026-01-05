@@ -1,32 +1,19 @@
-FROM python:3.9-slim
+# استفاده از ایمیج استاندارد و پایدار JLesage
+FROM jlesage/firefox
 
-# نصب Nginx، کروم، و ابزارهای VNC
-RUN apt-get update && apt-get install -y \
-    chromium \
-    xvfb \
-    x11vnc \
-    nginx \
-    git \
-    net-tools \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+# تنظیم پورت روی 10000 (مخصوص رندر)
+ENV WEB_LISTENING_PORT=10000
 
-# نصب NoVNC
-RUN git clone https://github.com/novnc/noVNC.git /opt/novnc \
-    && git clone https://github.com/novnc/websockify /opt/novnc/utils/websockify \
-    && ln -s /opt/novnc/vnc.html /opt/novnc/index.html
+# تنظیم رزولوشن (مناسب برای رم 512)
+ENV DISPLAY_WIDTH=1024
+ENV DISPLAY_HEIGHT=768
 
-# نصب Websockify پایتون
-RUN pip install websockify
+# تنظیم نام سرویس
+ENV APP_NAME="AI-Browser"
 
-COPY app.py .
+# کپی کردن اسکریپت اجرای سایت
+COPY startapp.sh /startapp.sh
+RUN chmod +x /startapp.sh
 
-# دسترسی اجرایی به پوشه‌ها
-RUN mkdir -p /var/log/nginx && \
-    mkdir -p /var/lib/nginx && \
-    chmod -R 777 /var/log/nginx && \
-    chmod -R 777 /var/lib/nginx
-
+# پورت رندر
 EXPOSE 10000
-
-CMD ["python", "app.py"]
