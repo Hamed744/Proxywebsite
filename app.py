@@ -3,69 +3,63 @@ import subprocess
 import time
 import sys
 
-# تنظیمات بهینه شده برای رندر
+# تنظیمات
 DISPLAY = ":0"
-# رزولوشن کمتر برای مصرف رم کمتر
-RESOLUTION = "800x600" 
-TARGET_URL = "https://hadadxyz-ai.hf.space"
-# دریافت پورت از رندر (یا پیش‌فرض 10000)
+RESOLUTION = "800x600"
 PORT = os.environ.get("PORT", "10000")
+TARGET_URL = "https://hadadxyz-ai.hf.space"
 
 def log(msg):
-    print(f"[SYSTEM] {msg}", flush=True)
+    print(f"==> {msg}", flush=True)
 
-def start_virtual_display():
-    log("Starting Xvfb (Display)...")
-    subprocess.Popen(["Xvfb", DISPLAY, "-screen", "0", f"{RESOLUTION}x16"])
+def start_services():
+    # 1. اجرای Xvfb (صفحه نمایش مجازی)
+    log("Starting Display (Xvfb)...")
+    subprocess.Popen([
+        "Xvfb", DISPLAY, 
+        "-screen", "0", f"{RESOLUTION}x16"
+    ])
     time.sleep(3)
 
-def start_vnc_server():
-    log("Starting x11vnc...")
-    # اجرای VNC
-    subprocess.Popen(["x11vnc", "-display", DISPLAY, "-nopw", "-forever", "-quiet", "-bg"])
+    # 2. اجرای x11vnc (سرور تصویر)
+    log("Starting VNC Server...")
+    subprocess.Popen([
+        "x11vnc", 
+        "-display", DISPLAY, 
+        "-nopw",       # بدون پسورد
+        "-forever",    # همیشه روشن بماند
+        "-shared",     # اجازه چند کاربر
+        "-bg"          # اجرا در پس‌زمینه
+    ])
+    time.sleep(2)
 
-def start_firefox():
-    log("Starting Firefox Kiosk...")
-    # اجرای فایرفاکس
+    # 3. اجرای فایرفاکس
+    log("Starting Firefox...")
     subprocess.Popen([
         "firefox-esr",
         "--display=" + DISPLAY,
         "--width=800",
         "--height=600",
-        "--kiosk",
+        "--kiosk",     # تمام صفحه
         TARGET_URL
     ])
 
-def start_novnc_proxy():
-    log(f"Starting NoVNC Proxy on port {PORT}...")
-    
-    # دستور حیاتی: listen روی 0.0.0.0
+    # 4. اجرای Websockify (پل ارتباطی اصلی)
+    # این دستور هم فایل‌های HTML را می‌دهد و هم سوکت را برقرار می‌کند
+    log(f"Starting Websockify on port {PORT}...")
     cmd = [
-        "/opt/novnc/utils/novnc_proxy",
-        "--vnc", "localhost:5900",
-        "--listen", f"0.0.0.0:{PORT}"
+        "python3", "-m", "websockify",
+        "--web", "/opt/novnc",  # پوشه فایل‌های HTML
+        f"0.0.0.0:{PORT}",      # پورت رندر
+        "localhost:5900"        # پورت داخلی VNC
     ]
     
-    process = subprocess.Popen(cmd)
-    return process
+    # این پروسه اصلی است و نباید بسته شود
+    subprocess.run(cmd)
 
 if __name__ == "__main__":
     try:
-        start_virtual_display()
-        start_vnc_server()
-        start_firefox()
-        
-        # اجرای پروکسی و ذخیره پروسه
-        proxy_process = start_novnc_proxy()
-        
-        log(f"Service works! Open: https://YOUR-APP.onrender.com/vnc.html?autoconnect=true")
-        
-        # نگه داشتن برنامه و چک کردن خطا
-        while True:
-            if proxy_process.poll() is not None:
-                log("FATAL: NoVNC Proxy crashed!")
-                sys.exit(1)
-            time.sleep(10)
-            
+        start_services()
     except Exception as e:
-        log(f"Error: {e}")
+        log(f"ERROR: {e}")
+        sys.exit(1)
