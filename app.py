@@ -1,42 +1,55 @@
-import cloudscraper
-from flask import Flask, Response, request
+import os
+import subprocess
+import time
 
-# --- Settings ---
-TARGET_BASE_URL = "https://hamed744-veu3.static.hf.space"
-# -----------------
+# تنظیمات نمایش
+DISPLAY = ":0"
+# رزولوشن را کمی کمتر کردیم تا روی رم 512 رندر روان‌تر اجرا شود
+RESOLUTION = "1024x768" 
+TARGET_URL = "https://hadadxyz-ai.hf.space"
+RENDER_PORT = "10000"
 
-app = Flask(__name__)
+def start_virtual_display():
+    print("Initializing Graphics Core...")
+    # اجرای صفحه نمایش مجازی
+    subprocess.Popen(["Xvfb", DISPLAY, "-screen", "0", f"{RESOLUTION}x16"])
+    time.sleep(3) # صبر برای لود شدن
 
-# Create a single, reusable scraper instance
-scraper = cloudscraper.create_scraper()
+def start_vnc_server():
+    print("Starting VNC Protocol...")
+    # اجرای سرور تصویر
+    subprocess.Popen(["x11vnc", "-display", DISPLAY, "-nopw", "-forever", "-quiet", "-bg"])
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def proxy(path):
-    """
-    Handles proxying requests using the lightweight cloudscraper library
-    with the simple and robust Flask framework.
-    """
+def start_firefox():
+    print("Launching Browser Engine...")
+    # اجرای فایرفاکس در حالت کیوسک (تمام صفحه و سبک)
+    subprocess.Popen([
+        "firefox-esr",
+        "--display=" + DISPLAY,
+        "--kiosk",
+        "--no-remote",
+        TARGET_URL
+    ])
+
+def start_novnc_proxy():
+    print(f"Starting Web Interface on port {RENDER_PORT}...")
+    # تبدیل VNC به وب‌سایت قابل نمایش در مرورگر
+    cmd = [
+        "/opt/novnc/utils/novnc_proxy",
+        "--vnc", "localhost:5900",
+        "--listen", RENDER_PORT
+    ]
+    subprocess.Popen(cmd)
+
+if __name__ == "__main__":
+    # ترتیب اجرا بسیار مهم است
+    start_virtual_display()
+    start_vnc_server()
+    start_firefox()
+    start_novnc_proxy()
     
-    target_url = f"{TARGET_BASE_URL.rstrip('/')}/{path.lstrip('/')}"
-    if request.query_string:
-        target_url += "?" + request.query_string.decode('utf-8')
-
-    print(f"--- New Request ---")
-    print(f"INFO: Proxying with cloudscraper to: {target_url}")
-
-    try:
-        response = scraper.get(target_url, timeout=30) # 30 second timeout
-        
-        # Check if the request was successful
-        response.raise_for_status()
-        
-        print(f"SUCCESS: Got {response.status_code} from target.")
-
-        content_type = response.headers.get('Content-Type', 'text/html')
-        
-        return Response(response.text, status=response.status_code, mimetype=content_type)
-
-    except Exception as e:
-        print(f"FATAL: An error occurred: {e}")
-        return f"An error occurred while trying to proxy the request: {e}", 500
+    print("System Online. Access via browser.")
+    
+    # حلقه بی‌نهایت برای باز نگه داشتن برنامه
+    while True:
+        time.sleep(60)
