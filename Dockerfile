@@ -1,19 +1,19 @@
-# استفاده از ایمیج استاندارد و پایدار JLesage
-FROM jlesage/firefox
+FROM python:3.10-slim
 
-# تنظیم پورت روی 10000 (مخصوص رندر)
-ENV WEB_LISTENING_PORT=10000
+# نصب Nginx و ابزارها
+RUN apt-get update && \
+    apt-get install -y wget unzip nginx && \
+    mkdir -p /var/log/nginx && \
+    mkdir -p /var/lib/nginx/body
 
-# تنظیم رزولوشن (مناسب برای رم 512)
-ENV DISPLAY_WIDTH=1024
-ENV DISPLAY_HEIGHT=768
+# دانلود Xray
+RUN wget https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip && \
+    unzip Xray-linux-64.zip && \
+    chmod +x xray && \
+    rm Xray-linux-64.zip
 
-# تنظیم نام سرویس
-ENV APP_NAME="AI-Browser"
+COPY app.py .
 
-# کپی کردن اسکریپت اجرای سایت
-COPY startapp.sh /startapp.sh
-RUN chmod +x /startapp.sh
+EXPOSE 7860
 
-# پورت رندر
-EXPOSE 10000
+CMD ["python", "app.py"]
