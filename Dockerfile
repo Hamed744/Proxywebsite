@@ -6,8 +6,8 @@ RUN apt-get update && \
     mkdir -p /var/log/nginx && \
     mkdir -p /var/lib/nginx/body
 
-# یک کاربر غیر-root به نام appuser بساز
-RUN useradd appuser # <--- خط ۱ اضافه شد
+# یک کاربر غیر-root با شماره شناسایی در بازه مجاز بساز
+RUN useradd --uid 10001 appuser  # <--- این خط تغییر کرد
 
 # دانلود Xray
 RUN wget https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-linux-64.zip && \
@@ -20,7 +20,7 @@ COPY app.py .
 EXPOSE 7860
 
 # به کاربر جدید سوییچ کن
-USER appuser # <--- خط ۲ اضافه شد
+USER 10001  # <--- این خط هم تغییر کرد
 
 # حالا برنامه را با کاربر معمولی اجرا کن
 CMD ["python", "app.py"]
